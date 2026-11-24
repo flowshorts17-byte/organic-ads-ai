@@ -55,3 +55,12 @@ npm run test:db     # aplica a migração num Postgres em memória e testa RLS/i
 | 4 | TikTok Content Posting API | Client Key + Client Secret; app aprovado em auditoria para publicar como público |
 | 4 | YouTube Data API v3 | OAuth Client ID + Secret (Google Cloud) |
 | 5 | Mercado Pago | Access Token, Public Key, segredo de assinatura do webhook |
+
+## Publicação (Cloudflare Workers, gratuito)
+- Projeto Supabase: `cjrhkmrgrqfiotjklgco` (sa-east-1), migração 0001 aplicada.
+- Worker: `organic-ads-ai` → https://organic-ads-ai.organic-ads-ai.workers.dev
+- Deploy automático pelo Workers Builds (conectado a este repositório):
+  - Comando de build: `npx opennextjs-cloudflare build`
+  - Comando de deploy: `npx wrangler deploy`
+- Variáveis públicas em `.env.production` (URL e anon key; seguras por causa da RLS).
+- Manual: `npm run cf:deploy` com `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_ACCOUNT_ID`.
