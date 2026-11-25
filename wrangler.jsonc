@@ -6,6 +6,7 @@
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   "observability": { "enabled": true },
+  "vars": { "GEMINI_MODEL": "gemini-3.6-flash" },
   // Processa a fila de agentes de IA a cada 2 minutos (Cron Triggers, plano gratuito)
   "triggers": { "crons": ["*/2 * * * *"] }
 }
