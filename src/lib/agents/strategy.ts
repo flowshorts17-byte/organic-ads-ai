@@ -98,9 +98,10 @@ export async function strategyBuilder(ctx: AgentContext): Promise<AgentResult> {
   });
   await notify(ctx, "Estratégia pronta", `A estratégia da campanha ${c.name} foi gerada com calendário de ${calendar.length} publicações.`);
 
-  // Etapa 3 (Produção) assumirá daqui com o Creative Generator.
+  // Etapa 3: o Creative Generator escreve os roteiros e narrações do calendário.
   return {
     summary: `Estratégia v${(current?.version ?? 0) + 1} com ${calendar.length} itens no calendário.`,
     output: { version: (current?.version ?? 0) + 1, calendar_items: calendar.length },
+    next: ["creative_generator"],
   };
 }

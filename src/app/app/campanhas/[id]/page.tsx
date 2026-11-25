@@ -12,6 +12,8 @@ import {
 import { changeCampaignStatus } from "../../campaign-actions";
 import { processNow, removeProduct, rerunAnalysis, retryTask } from "../../agent-actions";
 import { ProductForm } from "./product-form";
+import { enqueueCreatives } from "../../creative-actions";
+import { CreativeStudio, type StudioCreative } from "./creative-studio";
 
 export const metadata: Metadata = { title: "Campanha" };
 const fmt = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
@@ -81,6 +83,40 @@ export default async function CampaignPage({ params, searchParams }: {
     supabase.from("audit_logs").select("id,action,details,created_at").eq("entity_id", id).order("created_at", { ascending: false }),
     supabase.from("users").select("role").eq("id", user.id).maybeSingle(),
   ]);
+
+  // Etapa 3: roteiros + narração do calendário atual
+  const { data: creativeRows } = strategy.data
+    ? await supabase
+        .from("creatives")
+        .select("id,day,platform,status,hook,scenes,caption,hashtags,cta,affiliate_url,audio_path,videos_generated,error,products(title,image_url)")
+        .eq("strategy_id", strategy.data.id)
+        .order("calendar_index")
+    : { data: [] };
+  const audioPaths = (creativeRows ?? []).map((r) => r.audio_path).filter(Boolean) as string[];
+  const signed = audioPaths.length
+    ? (await supabase.storage.from("creatives").createSignedUrls(audioPaths, 60 * 60 * 3)).data ?? []
+    : [];
+  const signedMap = new Map(signed.map((x) => [x.path, x.signedUrl]));
+  const studio: StudioCreative[] = (creativeRows ?? []).map((r) => {
+    const prod = r.products as unknown as { title: string; image_url: string | null } | null;
+    return {
+      id: r.id,
+      day: r.day,
+      platform: r.platform,
+      platformLabel: labelOf(PLATFORMS, r.platform),
+      status: r.status,
+      hook: r.hook,
+      scenes: (r.scenes ?? []) as StudioCreative["scenes"],
+      caption: r.caption,
+      hashtags: (r.hashtags ?? []) as string[],
+      cta: r.cta,
+      affiliateUrl: r.affiliate_url,
+      audioUrl: r.audio_path ? signedMap.get(r.audio_path) ?? null : null,
+      productTitle: prod?.title ?? null,
+      productImage: prod?.image_url ?? null,
+      videosGenerated: r.videos_generated ?? 0,
+    };
+  });
 
   const productRows = ((products.data ?? []) as unknown as ProductRow[]).sort(
     (a, b) => (b.product_scores[0]?.score ?? -1) - (a.product_scores[0]?.score ?? -1),
@@ -356,7 +392,28 @@ export default async function CampaignPage({ params, searchParams }: {
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-[11px] text-white/40">Os roteiros e legendas de cada item serão produzidos na Etapa 3.</p>
+        </Card>
+      )}
+
+      {strategy.data && (
+        <Card>
+          <SectionTitle aside={<span className="text-xs text-white/40">{studio.filter((x) => x.status === "ready").length}/{calendar.length} prontos</span>}>
+            Vídeos (roteiro, narração e legenda)
+          </SectionTitle>
+          {studio.length === 0 ? (
+            <EmptyState>Os roteiros e narrações de cada item do calendário aparecem aqui.</EmptyState>
+          ) : (
+            <CreativeStudio creatives={studio} />
+          )}
+          {c.status === "active" && studio.filter((x) => x.status === "ready").length < calendar.length && (
+            <form action={enqueueCreatives} className="mt-3">
+              <input type="hidden" name="campaign_id" value={id} />
+              <SubmitButton variant="secondary" pendingText="Enfileirando…">
+                {studio.length === 0 ? "Gerar roteiros" : "Continuar gerando roteiros"}
+              </SubmitButton>
+            </form>
+          )}
+          <p className="mt-2 text-[11px] text-white/40">Roteiro e narração feitos pela IA (Gemini, camada gratuita). O vídeo é montado no seu aparelho com as fotos do produto. Cada vídeo gerado conta 1 conteúdo do plano.</p>
         </Card>
       )}
 

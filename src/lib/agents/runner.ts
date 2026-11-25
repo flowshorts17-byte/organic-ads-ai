@@ -4,6 +4,7 @@ import { AIError } from "@/lib/ai/gemini";
 import { SourceError } from "@/lib/sources/mercadolivre";
 import { createAdminClient, MissingConfigError } from "@/lib/supabase/admin";
 import { audienceIntelligence } from "./audience";
+import { creativeGenerator } from "./creative";
 import {
   AgentFatalError, NeedsInputError,
   type AgentCode, type AgentContext, type AgentResult, type CampaignRecord, type TaskRecord,
@@ -12,12 +13,13 @@ import { productHunter } from "./product-hunter";
 import { productSelector } from "./product-selector";
 import { strategyBuilder } from "./strategy";
 
-/** Agentes implementados na Etapa 2. Os demais chegam nas etapas 3 e 4. */
+/** Agentes implementados (Etapas 2 e 3). Os demais chegam na etapa 4. */
 const AGENTS: Partial<Record<AgentCode, (ctx: AgentContext) => Promise<AgentResult>>> = {
   product_hunter: productHunter,
   product_selector: productSelector,
   audience_intelligence: audienceIntelligence,
   strategy_builder: strategyBuilder,
+  creative_generator: creativeGenerator,
 };
 
 export const IMPLEMENTED_AGENTS = Object.keys(AGENTS) as AgentCode[];
