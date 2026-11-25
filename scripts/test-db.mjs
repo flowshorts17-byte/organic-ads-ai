@@ -21,7 +21,9 @@ await db.exec(`
 const sql = readFileSync(new URL("../supabase/migrations/0001_fundacao.sql", import.meta.url), "utf8")
   // gen_random_uuid() é nativo no Postgres 13+; PGlite não traz a extensão pgcrypto
   .replace(/create extension if not exists pgcrypto;/i, "");
-try { await db.exec(sql); ok("migração aplicada sem erros"); } catch (e) { fail("migração", e); process.exit(1); }
+try { await db.exec(sql); ok("migração 0001 aplicada sem erros"); } catch (e) { fail("migração 0001", e); process.exit(1); }
+const sql2 = readFileSync(new URL("../supabase/migrations/0002_inteligencia.sql", import.meta.url), "utf8");
+try { await db.exec(sql2); ok("migração 0002 (inteligência) aplicada sem erros"); } catch (e) { fail("migração 0002", e); process.exit(1); }
 
 await db.exec(`
   grant usage on schema public to authenticated;
@@ -95,5 +97,40 @@ await as(A, async () => {
   const logs = (await db.query(`select count(*)::int n from public.audit_logs where action='campaign_created'`)).rows[0].n;
   logs === 3 ? ok("auditoria registra criação de campanhas") : fail("audit", logs);
 });
+
+// ---------------- Etapa 2: fila de agentes e limite de IA (como service_role = dono das funções) ----------------
+{
+  const claim = async (u = null, c = null) => (await db.query(`select * from public.claim_agent_task($1,$2)`, [u, c])).rows;
+  const t1 = await claim();
+  t1.length === 1 && t1[0].status === "running" && t1[0].attempts === 1 && t1[0].campaign_id === campA
+    ? ok("claim_agent_task pega a tarefa e marca como executando") : fail("claim", JSON.stringify(t1));
+  (await claim()).length === 0 ? ok("a mesma tarefa não é pega duas vezes") : fail("claim duplicado", "pegou de novo");
+
+  await db.query(`update public.agent_tasks set status='succeeded' where id=$1`, [t1[0].id]);
+  await db.query(`insert into public.agent_tasks (user_id,campaign_id,agent_code) values ($1,$2,'product_selector')`, [A, campA]);
+  await db.query(`update public.campaigns set status='paused' where id=$1`, [campA]);
+  (await claim()).length === 0 ? ok("tarefas de campanha pausada ficam na fila") : fail("pausada", "executou");
+  await db.query(`update public.campaigns set status='active' where id=$1`, [campA]);
+  (await claim(B)).length === 0 ? ok("filtro por usuário não pega tarefa de outro usuário") : fail("filtro usuário", "pegou");
+  const t2 = await claim(A, campA);
+  t2.length === 1 && t2[0].agent_code === "product_selector" ? ok("filtro por usuário e campanha funciona") : fail("filtro", JSON.stringify(t2));
+
+  await db.query(`update public.agent_tasks set started_at = now() - interval '11 minutes' where id=$1`, [t2[0].id]);
+  const t3 = await claim();
+  t3.length === 1 && t3[0].id === t2[0].id && t3[0].attempts === 2 ? ok("tarefa travada (>10 min) volta para a fila") : fail("travada", JSON.stringify(t3));
+
+  await db.query(`update public.usage_limits set max_ai_requests = 2 where user_id=$1`, [A]);
+  const c1 = (await db.query(`select public.consume_ai_requests($1, 1) ok`, [A])).rows[0].ok;
+  const c2 = (await db.query(`select public.consume_ai_requests($1, 1) ok`, [A])).rows[0].ok;
+  const c3 = (await db.query(`select public.consume_ai_requests($1, 1) ok`, [A])).rows[0].ok;
+  c1 && c2 && !c3 ? ok("limite mensal de IA é respeitado") : fail("limite IA", [c1, c2, c3].join(","));
+
+  await as(A, async () => {
+    try { await db.query(`select * from public.claim_agent_task(null,null)`); fail("usuário chamar claim_agent_task", "permitiu"); }
+    catch { ok("usuário comum não consegue chamar o processador da fila"); }
+    try { await db.query(`select public.consume_ai_requests($1, -100)`, [A]); fail("usuário mexer no limite", "permitiu"); }
+    catch { ok("usuário comum não consegue alterar o próprio limite de IA"); }
+  });
+}
 
 console.log(`\n${passed} verificações passaram${process.exitCode ? " — HÁ FALHAS" : ""}.`);

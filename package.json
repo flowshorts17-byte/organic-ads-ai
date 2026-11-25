@@ -11,7 +11,9 @@
     "test:db": "node scripts/test-db.mjs",
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "test:score": "node --no-warnings scripts/test-scoring.mjs",
+    "test": "npm run test:score && npm run test:db"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
